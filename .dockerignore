@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.db
+**/*.db-*
+.git/
+.env
+data/
+.claude/
+.clinerules/
+.cursor/
+.github/
+.opencode/
+.windsurf/

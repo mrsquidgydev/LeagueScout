@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------
+# Secrets — never commit real tokens
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json
+
+# ---------------------------------------------------------------
+# Local data (SQLite database, logs)
+# ---------------------------------------------------------------
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+logs/
+*.log
+
+# ---------------------------------------------------------------
+# .NET build output
+# ---------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Pp]ublish/
+artifacts/
+*.nupkg
+*.snupkg
+project.lock.json
+*.binlog
+
+# ---------------------------------------------------------------
+# Tests and coverage
+# ---------------------------------------------------------------
+[Tt]est[Rr]esults/
+coverage/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+# ---------------------------------------------------------------
+# IDEs and editors
+# ---------------------------------------------------------------
+.vs/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.DotSettings.user
+.idea/
+*.sln.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ---------------------------------------------------------------
+# AI assistant local settings (shared config stays tracked)
+# ---------------------------------------------------------------
+.claude/settings.local.json
+
+# ---------------------------------------------------------------
+# OS files
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

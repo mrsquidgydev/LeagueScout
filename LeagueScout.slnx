@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LeagueScout.Application/LeagueScout.Application.csproj" />
+    <Project Path="src/LeagueScout.Bot/LeagueScout.Bot.csproj" />
+    <Project Path="src/LeagueScout.Domain/LeagueScout.Domain.csproj" />
+    <Project Path="src/LeagueScout.Infrastructure/LeagueScout.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LeagueScout.Tests/LeagueScout.Tests.csproj" />
+  </Folder>
+</Solution>
