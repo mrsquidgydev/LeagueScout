@@ -27,13 +27,14 @@ public class PokeDataProviderTests
     {
         var factory = new StubHttpClientFactory(new HttpClient(handler) { BaseAddress = new Uri("https://pokedata.ovh/events2/") });
         return new PokeDataEventProvider(
-            factory, new GeoTimeZoneResolver(), Options.Create(new PokeDataOptions()), NullLogger<PokeDataEventProvider>.Instance);
+            factory, new GeoTimeZoneResolver(), Options.Create(new PokeDataOptions()), TimeProvider.System,
+            NullLogger<PokeDataEventProvider>.Instance);
     }
 
     [Fact]
     public async Task Fixture_maps_to_normalized_domain_events()
     {
-        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, FixtureJson));
+        var provider = CreateProvider(new StubHttpHandler(HttpStatusCode.OK, FixtureJson));
 
         var events = (await provider.GetEventsAsync(TcgChallengesAndCups)).ToList();
 
@@ -73,7 +74,7 @@ public class PokeDataProviderTests
               {"id":"c","title":"Good","when":"2026-10-06 19:00:00","pokemon_url":"26-10-2","game":"tcg","type":"cups","lat":29.5,"lng":-95.1}
             ]
             """;
-        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, json));
+        var provider = CreateProvider(new StubHttpHandler(HttpStatusCode.OK, json));
 
         var events = await provider.GetEventsAsync(TcgChallengesAndCups);
 
@@ -83,7 +84,7 @@ public class PokeDataProviderTests
     [Fact]
     public async Task Http_failure_throws_provider_exception()
     {
-        var provider = CreateProvider(new StubHandler(HttpStatusCode.ServiceUnavailable, "down"));
+        var provider = CreateProvider(new StubHttpHandler(HttpStatusCode.ServiceUnavailable, "down"));
 
         await Assert.ThrowsAsync<EventProviderException>(() => provider.GetEventsAsync(TcgChallengesAndCups));
     }
@@ -91,7 +92,7 @@ public class PokeDataProviderTests
     [Fact]
     public async Task Malformed_json_throws_provider_exception()
     {
-        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, "<html>maintenance</html>"));
+        var provider = CreateProvider(new StubHttpHandler(HttpStatusCode.OK, "<html>maintenance</html>"));
 
         var ex = await Assert.ThrowsAsync<EventProviderException>(() => provider.GetEventsAsync(TcgChallengesAndCups));
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
@@ -135,17 +136,69 @@ public class PokeDataProviderTests
         Assert.Contains("stateCodes=&", uri);
     }
 
-    private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    [Fact]
+    public async Task Rate_limit_reports_status_and_retry_after_without_quick_retry()
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(status)
-            {
-                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            });
+        var handler = new StubHttpHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromMinutes(20));
+            return Task.FromResult(response);
+        });
+        var provider = CreateProvider(handler);
+
+        var ex = await Assert.ThrowsAsync<EventProviderException>(() => provider.GetEventsAsync(TcgChallengesAndCups));
+
+        Assert.Equal(429, ex.StatusCode);
+        Assert.Equal(TimeSpan.FromMinutes(20), ex.RetryAfter);
+        Assert.True(ex.IsTransient);
+        Assert.Equal(1, handler.Requests);
     }
 
-    private sealed class StubHttpClientFactory(HttpClient client) : IHttpClientFactory
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, true)]
+    [InlineData(HttpStatusCode.BadGateway, true)]
+    [InlineData(HttpStatusCode.RequestTimeout, true)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    public async Task Http_errors_are_classified_as_transient_or_not(HttpStatusCode status, bool transient)
     {
-        public HttpClient CreateClient(string name) => client;
+        var provider = CreateProvider(new StubHttpHandler(status, ""));
+
+        var ex = await Assert.ThrowsAsync<EventProviderException>(() => provider.GetEventsAsync(TcgChallengesAndCups));
+
+        Assert.Equal((int)status, ex.StatusCode);
+        Assert.Equal(transient, ex.IsTransient);
+        Assert.Null(ex.RetryAfter);
+    }
+
+    [Fact]
+    public async Task Timeout_throws_transient_provider_exception()
+    {
+        var provider = CreateProvider(new StubHttpHandler(_ => throw new TaskCanceledException("timed out", new TimeoutException())));
+
+        var ex = await Assert.ThrowsAsync<EventProviderException>(() => provider.GetEventsAsync(TcgChallengesAndCups));
+
+        Assert.True(ex.IsTransient);
+        Assert.Null(ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_is_not_wrapped()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var provider = CreateProvider(new StubHttpHandler(_ => throw new TaskCanceledException()));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetEventsAsync(TcgChallengesAndCups, cts.Token));
+    }
+
+    [Fact]
+    public void Default_user_agent_identifies_the_project_and_version()
+    {
+        var userAgent = new PokeDataOptions().EffectiveUserAgent;
+
+        Assert.Matches(@"^LeagueScout/\d+\.\d+[^ ]* \(\+https://github\.com/mrsquidgydev/LeagueScout\)$", userAgent);
+        Assert.True(System.Net.Http.Headers.ProductInfoHeaderValue.TryParse(userAgent.Split(' ')[0], out _));
     }
 }

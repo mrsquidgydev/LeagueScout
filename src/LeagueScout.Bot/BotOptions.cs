@@ -7,6 +7,7 @@ public sealed class BotOptions
 {
     public required string DiscordToken { get; init; }
     public required string DatabasePath { get; init; }
+    /// <summary>How often cached events are matched to guilds and posted. Does not contact PokéData.</summary>
     public required TimeSpan EventSyncInterval { get; init; }
 
     /// <summary>When set, slash commands register to this guild only (instant; for development).</summary>
@@ -28,9 +29,10 @@ public sealed class BotOptions
             throw new InvalidOperationException($"EVENT_SYNC_INTERVAL '{intervalText}' is not a valid TimeSpan (e.g. 06:00:00).");
         }
 
-        if (interval < TimeSpan.FromMinutes(15))
+        // Guild sync reads only the local cache; PokéData polling is PokeData:RefreshInterval.
+        if (interval < TimeSpan.FromMinutes(5))
         {
-            throw new InvalidOperationException("EVENT_SYNC_INTERVAL must be at least 00:15:00 to avoid over-polling PokéData.");
+            throw new InvalidOperationException("EVENT_SYNC_INTERVAL must be at least 00:05:00.");
         }
 
         ulong? commandGuildId = null;

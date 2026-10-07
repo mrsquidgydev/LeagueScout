@@ -1,6 +1,7 @@
 using System.Globalization;
 using Discord;
 using Discord.Interactions;
+using LeagueScout.Application.Caching;
 using LeagueScout.Application.Guilds;
 using LeagueScout.Bot.Workers;
 using LeagueScout.Domain;
@@ -9,7 +10,11 @@ namespace LeagueScout.Bot.Discord.Modules;
 
 [Group("eventbot", "Event bot settings")]
 [CommandContextType(InteractionContextType.Guild)]
-public sealed class EventBotModule(GuildConfigurationService configurations, SyncTrigger syncTrigger)
+public sealed class EventBotModule(
+    GuildConfigurationService configurations,
+    EventCacheDiagnosticsService diagnostics,
+    SyncTrigger syncTrigger,
+    CacheRefreshTrigger cacheRefreshTrigger)
     : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("status", "Show this server's event bot configuration")]
@@ -76,13 +81,78 @@ public sealed class EventBotModule(GuildConfigurationService configurations, Syn
         });
 
         var blocker = config.GetSyncBlocker();
-        if (blocker is null) syncTrigger.Trigger();
+        if (blocker is null)
+        {
+            // Post matching events already in the shared cache now. The refresh worker requests
+            // PokéData only if this server's dataset has never been fetched or is due.
+            syncTrigger.Trigger();
+            cacheRefreshTrigger.Trigger();
+        }
 
         var note = blocker is null
             ? "Saved. A sync has been queued."
             : $"Saved. Events won't be posted yet: {blocker}";
 
         await RespondAsync(note, embed: BuildStatus(config), ephemeral: true);
+    }
+
+    [SlashCommand("diagnostics", "Show PokéData cache health for this server")]
+    [DefaultMemberPermissions(GuildPermission.ManageGuild)]
+    [RequireUserPermission(GuildPermission.ManageGuild)]
+    public async Task DiagnosticsAsync()
+    {
+        var report = await diagnostics.GetAsync(Context.Guild.Id);
+        await RespondAsync(embed: BuildDiagnostics(report), ephemeral: true);
+    }
+
+    private static Embed BuildDiagnostics(EventCacheDiagnostics report)
+    {
+        static string When(DateTime? utc) => utc is { } value ? EventEmbedBuilder.Timestamp(value, 'R') : "Never";
+
+        var embed = new EmbedBuilder().WithTitle("PokéData cache");
+        var dataset = report.Dataset;
+
+        if (dataset is null)
+        {
+            embed.WithDescription("This server has no location set, so it reads no PokéData dataset.");
+        }
+        else
+        {
+            var health = dataset.Health switch
+            {
+                CacheHealth.Healthy => "✅ Healthy",
+                CacheHealth.Retrying => "⚠️ Last refresh failed; serving cached data",
+                CacheHealth.Stale => "⚠️ Stale; serving cached data",
+                _ => "⏳ Not refreshed yet",
+            };
+
+            var age = dataset.CacheAge is { } a ? $"{(int)a.TotalHours}h {a.Minutes}m" : "None";
+            var failures = dataset.LastFailureStatusCode is { } status && dataset.ConsecutiveFailures > 0
+                ? $"{dataset.ConsecutiveFailures} (HTTP {status})"
+                : dataset.ConsecutiveFailures.ToString(CultureInfo.InvariantCulture);
+
+            embed
+                .AddField("Dataset", Format.Code(dataset.DatasetKey), inline: true)
+                .AddField("Health", health, inline: true)
+                .AddField("Last attempted refresh", When(dataset.LastAttemptAt), inline: true)
+                .AddField("Last successful refresh", When(dataset.LastSuccessAt), inline: true)
+                .AddField("Cache age", age, inline: true)
+                .AddField("Next allowed refresh", When(dataset.NextAllowedRequestAt), inline: true)
+                .AddField("Events in last refresh", dataset.LastResultCount, inline: true)
+                .AddField("Consecutive failures", failures, inline: true);
+        }
+
+        var counters = report.Counters;
+        return embed
+            .AddField("Cached events", report.CachedEventCount, inline: true)
+            .AddField("Upcoming active events", report.UpcomingActiveEventCount, inline: true)
+            .AddField("Matching upcoming events", report.MatchingUpcomingEventCount?.ToString(CultureInfo.InvariantCulture) ?? "n/a", inline: true)
+            .AddField("Last server sync", When(report.LastGuildSyncAt), inline: true)
+            .WithFooter(string.Create(CultureInfo.InvariantCulture,
+                $"Since start: {counters.UpstreamRequests} requests, {counters.Failures} failed " +
+                $"({counters.RateLimited}× 429, {counters.ServerErrors}× 5xx), " +
+                $"{counters.CacheHits} cache hits, {counters.CacheMisses} misses"))
+            .Build();
     }
 
     private static Embed BuildStatus(GuildConfiguration config)

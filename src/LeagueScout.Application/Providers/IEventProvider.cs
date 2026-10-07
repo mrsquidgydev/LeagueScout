@@ -17,4 +17,14 @@ public interface IEventProvider
 }
 
 public class EventProviderException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+    : Exception(message, innerException)
+{
+    /// <summary>HTTP status returned by the source, when it responded.</summary>
+    public int? StatusCode { get; init; }
+
+    /// <summary>How long the source asked callers to wait (HTTP <c>Retry-After</c>), when given.</summary>
+    public TimeSpan? RetryAfter { get; init; }
+
+    /// <summary>False when retrying soon is unlikely to help, e.g. a 404 or an unreadable response.</summary>
+    public bool IsTransient { get; init; } = true;
+}

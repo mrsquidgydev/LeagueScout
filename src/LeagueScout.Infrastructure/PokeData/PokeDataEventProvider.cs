@@ -21,41 +21,85 @@ public sealed class PokeDataEventProvider : IEventProvider
 
     private readonly HttpClient _http;
     private readonly PokeDataEventMapper _mapper;
+    private readonly TimeProvider _clock;
     private readonly ILogger<PokeDataEventProvider> _logger;
 
     public PokeDataEventProvider(
         IHttpClientFactory httpClientFactory,
         ITimeZoneResolver timeZoneResolver,
         IOptions<PokeDataOptions> options,
+        TimeProvider clock,
         ILogger<PokeDataEventProvider> logger)
     {
         _http = httpClientFactory.CreateClient(HttpClientName);
         _mapper = new PokeDataEventMapper(timeZoneResolver, options.Value.SourceUrl);
+        _clock = clock;
         _logger = logger;
     }
 
     public string SourceName => PokeDataEventMapper.SourceName;
 
+    /// <remarks>
+    /// PokéData sends no ETag or Last-Modified header, so requests are never conditional.
+    /// Transient failures are retried briefly by the HTTP resilience handler (never 429); longer
+    /// backoff is the caller's job, using <see cref="EventProviderException.RetryAfter"/> when present.
+    /// </remarks>
     public async Task<IReadOnlyCollection<PokemonEvent>> GetEventsAsync(
         EventSearchCriteria criteria, CancellationToken cancellationToken = default)
     {
         var requestUri = BuildRequestUri(criteria);
+        var startedAt = _clock.GetTimestamp();
 
         List<PokeDataEventDto>? dtos;
         try
         {
             using var response = await _http.GetAsync(requestUri, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                throw new EventProviderException($"PokéData returned HTTP {status}.")
+                {
+                    StatusCode = status,
+                    RetryAfter = GetRetryAfter(response),
+                    IsTransient = IsTransientStatus(status),
+                };
+            }
+
             dtos = await response.Content.ReadFromJsonAsync<List<PokeDataEventDto>>(cancellationToken);
         }
-        catch (Exception ex) when ((ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (JsonException ex)
+        {
+            // The page or format changed; retrying soon will not help.
+            throw new EventProviderException($"PokéData response could not be read: {ex.Message}", ex) { IsTransient = false };
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or Polly.ExecutionRejectedException)
                                    && !cancellationToken.IsCancellationRequested)
         {
-            throw new EventProviderException($"PokéData request failed: {ex.Message}", ex);
+            // Network errors, timeouts and an open circuit breaker.
+            throw new EventProviderException($"PokéData request failed: {ex.GetType().Name}: {ex.Message}", ex);
         }
+
+        _logger.LogDebug(
+            "PokéData returned {RecordCount} records in {DurationMs} ms for {RequestUri}",
+            dtos?.Count ?? 0, (long)_clock.GetElapsedTime(startedAt).TotalMilliseconds, requestUri);
 
         return MapAll(dtos ?? [], criteria);
     }
+
+    private TimeSpan? GetRetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header?.Delta is { } delta) return delta;
+        if (header?.Date is { } date)
+        {
+            var wait = date - _clock.GetUtcNow();
+            return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+        }
+
+        return null;
+    }
+
+    private static bool IsTransientStatus(int status) => status is 408 or 429 || status >= 500;
 
     internal IReadOnlyCollection<PokemonEvent> MapAll(IEnumerable<PokeDataEventDto> dtos, EventSearchCriteria criteria)
     {

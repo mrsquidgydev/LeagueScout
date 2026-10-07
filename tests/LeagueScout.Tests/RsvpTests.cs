@@ -105,6 +105,7 @@ public class RsvpTests : IDisposable
 
         var moved = _h.SourceEvent("26-10-000001", start: _h.Now.AddDays(11));
         _h.Provider.Events = [moved];
+        _h.Clock.Advance(TimeSpan.FromHours(6));
         await _h.SyncAsync();
 
         var update = Assert.Single(_h.Publisher.Updates);

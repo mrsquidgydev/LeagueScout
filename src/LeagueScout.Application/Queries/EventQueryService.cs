@@ -15,6 +15,7 @@ public class EventQueryService(IApplicationDbContext db, TimeProvider clock)
         var now = clock.GetUtcNow().UtcDateTime;
 
         var messages = await db.GuildEventMessages
+            .AsNoTracking()
             .Include(m => m.Event)
             .Where(m => m.GuildId == guildId
                         && m.Event.Status == EventStatus.Active
@@ -33,7 +34,7 @@ public class EventQueryService(IApplicationDbContext db, TimeProvider clock)
         var now = clock.GetUtcNow().UtcDateTime;
 
         var rows = await (
-                from r in db.EventRsvps
+                from r in db.EventRsvps.AsNoTracking()
                 join m in db.GuildEventMessages on new { r.EventId, r.GuildId } equals new { m.EventId, m.GuildId }
                 where r.GuildId == guildId
                       && r.DiscordUserId == userId

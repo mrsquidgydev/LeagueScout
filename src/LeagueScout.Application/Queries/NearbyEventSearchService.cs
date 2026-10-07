@@ -11,6 +11,7 @@ public sealed record NearbyEventSearchResult(GeocodedLocation Location, IReadOnl
 /// <summary>
 /// Live lookup of events around a user-supplied place. Nothing is stored in the database.
 /// Geocoding and provider results are cached in memory to limit load on both services.
+/// This is the only user-triggered event-source request; the shared cache only covers configured areas.
 /// </summary>
 public class NearbyEventSearchService(IGeocoder geocoder, IEventProvider provider, IMemoryCache cache, TimeProvider clock)
 {
@@ -78,19 +79,10 @@ public class NearbyEventSearchService(IGeocoder geocoder, IEventProvider provide
     }
 
     /// <summary>Great-circle distance from the searched place, or null when the event has no coordinates.</summary>
-    public static double? Distance(GeocodedLocation from, PokemonEvent to, DistanceUnit unit)
-    {
-        if (to.Latitude is not { } lat || to.Longitude is not { } lng) return null;
-
-        var earthRadius = unit == DistanceUnit.Kilometers ? 6371.0 : 3958.8;
-        var dLat = ToRadians(lat - from.Latitude);
-        var dLng = ToRadians(lng - from.Longitude);
-        var a = Math.Pow(Math.Sin(dLat / 2), 2)
-                + Math.Cos(ToRadians(from.Latitude)) * Math.Cos(ToRadians(lat)) * Math.Pow(Math.Sin(dLng / 2), 2);
-        return earthRadius * 2 * Math.Asin(Math.Min(1, Math.Sqrt(a)));
-    }
-
-    private static double ToRadians(double degrees) => degrees * Math.PI / 180;
+    public static double? Distance(GeocodedLocation from, PokemonEvent to, DistanceUnit unit) =>
+        to.Latitude is { } lat && to.Longitude is { } lng
+            ? GeoDistance.Between(from.Latitude, from.Longitude, lat, lng, unit)
+            : null;
 
     private readonly record struct GeocodeKey(string Query);
 

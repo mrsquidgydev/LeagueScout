@@ -3,7 +3,10 @@ using LeagueScout.Bot.Discord;
 
 namespace LeagueScout.Bot.Workers;
 
-/// <summary>Runs event synchronization on a fixed interval, or sooner when triggered.</summary>
+/// <summary>
+/// Matches cached events to guilds and posts them on a fixed interval, or sooner when triggered
+/// (after a cache refresh changes events, or a guild is configured). Never calls PokéData.
+/// </summary>
 public sealed class EventSyncWorker(
     IServiceScopeFactory scopeFactory,
     DiscordReadySignal discordReady,
@@ -13,7 +16,7 @@ public sealed class EventSyncWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Waiting for Discord before the first sync; interval {SyncInterval}", options.EventSyncInterval);
+        logger.LogInformation("Waiting for Discord before the first guild sync; interval {SyncInterval}", options.EventSyncInterval);
         await discordReady.WaitAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -31,7 +34,7 @@ public sealed class EventSyncWorker(
             catch (Exception ex)
             {
                 // Never let a failed run stop the bot; the next interval retries.
-                logger.LogError(ex, "Event synchronization failed");
+                logger.LogError(ex, "Guild synchronization failed");
             }
 
             try

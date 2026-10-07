@@ -1,7 +1,7 @@
 namespace LeagueScout.Bot.Workers;
 
-/// <summary>Lets other components request an immediate sync instead of waiting for the next interval.</summary>
-public sealed class SyncTrigger
+/// <summary>Lets other components wake a worker now instead of waiting for its next interval.</summary>
+public abstract class WorkerTrigger
 {
     private readonly SemaphoreSlim _signal = new(0, 1);
 
@@ -13,7 +13,7 @@ public sealed class SyncTrigger
         }
         catch (SemaphoreFullException)
         {
-            // A sync is already queued.
+            // A run is already queued.
         }
     }
 
@@ -21,3 +21,9 @@ public sealed class SyncTrigger
     public Task WaitAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
         _signal.WaitAsync(timeout, cancellationToken);
 }
+
+/// <summary>Wakes <see cref="EventSyncWorker"/>: match cached events to guilds and post to Discord.</summary>
+public sealed class SyncTrigger : WorkerTrigger;
+
+/// <summary>Wakes <see cref="EventCacheRefreshWorker"/>: refresh any dataset that is due. Never forces a request.</summary>
+public sealed class CacheRefreshTrigger : WorkerTrigger;

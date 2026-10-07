@@ -1,8 +1,10 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
+using LeagueScout.Application.Caching;
 using LeagueScout.Application.Persistence;
 using LeagueScout.Application.Providers;
 using LeagueScout.Infrastructure.Geocoding;
@@ -21,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.Configure<PokeDataOptions>(configuration.GetSection(PokeDataOptions.SectionName));
+        services.Configure<EventCacheOptions>(configuration.GetSection(EventCacheOptions.SectionName));
         services.AddSingleton<ITimeZoneResolver, GeoTimeZoneResolver>();
 
         var pokeData = configuration.GetSection(PokeDataOptions.SectionName).Get<PokeDataOptions>() ?? new PokeDataOptions();
@@ -30,7 +33,7 @@ public static class DependencyInjection
             {
                 var options = sp.GetRequiredService<IOptions<PokeDataOptions>>().Value;
                 client.BaseAddress = options.BaseAddress;
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(options.EffectiveUserAgent);
                 client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
                 // Same header the Events v2 page sends.
                 client.DefaultRequestHeaders.Add("X-Requested-With", "XMLHttpRequest");
@@ -42,6 +45,11 @@ public static class DependencyInjection
                 options.Retry.MaxRetryAttempts = pokeData.MaxRetryAttempts;
                 options.Retry.Delay = TimeSpan.FromSeconds(2);
                 options.Retry.BackoffType = Polly.DelayBackoffType.Exponential;
+                // Quick retries for transient failures only. A 429 goes straight back to the cache
+                // service, which waits for Retry-After or the failure backoff instead of retrying now.
+                options.Retry.ShouldHandle = args => ValueTask.FromResult(
+                    HttpClientResiliencePredicates.IsTransient(args.Outcome)
+                    && args.Outcome.Result?.StatusCode != HttpStatusCode.TooManyRequests);
                 options.AttemptTimeout.Timeout = pokeData.AttemptTimeout;
                 options.TotalRequestTimeout.Timeout = pokeData.TotalTimeout;
                 options.CircuitBreaker.SamplingDuration = pokeData.AttemptTimeout * 2;
