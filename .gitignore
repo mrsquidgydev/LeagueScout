@@ -66,6 +66,8 @@ coverage*.info
 # AI assistant local settings (shared config stays tracked)
 # ---------------------------------------------------------------
 .claude/settings.local.json
+# One-off task prompts; keep local only
+.claude/prompts/
 
 # ---------------------------------------------------------------
 # graphify (graph.json, GRAPH_REPORT.md, graph.html stay tracked)
