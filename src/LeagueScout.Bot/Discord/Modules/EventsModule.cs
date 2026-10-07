@@ -1,6 +1,7 @@
 using System.Text;
 using Discord;
 using Discord.Interactions;
+using LeagueScout.Application.Providers;
 using LeagueScout.Application.Queries;
 using LeagueScout.Domain;
 
@@ -8,9 +9,11 @@ namespace LeagueScout.Bot.Discord.Modules;
 
 [Group("events", "Pokémon events in this server")]
 [CommandContextType(InteractionContextType.Guild)]
-public sealed class EventsModule(EventQueryService queries) : InteractionModuleBase<SocketInteractionContext>
+public sealed class EventsModule(EventQueryService queries, NearbyEventSearchService nearby, UserCooldown cooldown)
+    : InteractionModuleBase<SocketInteractionContext>
 {
     private const int ListLimit = 15;
+    private static readonly TimeSpan NearCooldown = TimeSpan.FromSeconds(30);
 
     [SlashCommand("upcoming", "Show upcoming events the bot knows about")]
     public async Task UpcomingAsync()
@@ -36,6 +39,47 @@ public sealed class EventsModule(EventQueryService queries) : InteractionModuleB
         }
 
         await RespondAsync(embed: BuildList("Your events", events), ephemeral: true);
+    }
+
+    [SlashCommand("near", "Search PokéData live for League Challenges and Cups near a place")]
+    public async Task NearAsync(
+        [Summary("location", "City, postcode or address, e.g. Austin, TX")][MinLength(2)][MaxLength(100)] string location,
+        [Summary("radius", "Search radius (default 50)")][MinValue(1)][MaxValue(500)] double radius = 50,
+        [Summary("unit", "Radius unit (default miles)")] DistanceUnit unit = DistanceUnit.Miles,
+        [Summary("days", "How many days ahead to look (default 30)")][MinValue(1)][MaxValue(120)] int days = 30)
+    {
+        if (!cooldown.TryStart("events-near", Context.User.Id, NearCooldown, out var remaining))
+        {
+            await RespondAsync($"Please wait {Math.Ceiling(remaining.TotalSeconds):0}s before searching again.", ephemeral: true);
+            return;
+        }
+
+        // Geocoding plus PokéData can exceed Discord's 3-second response window.
+        await DeferAsync(ephemeral: true);
+
+        NearbyEventSearchResult? result;
+        try
+        {
+            result = await nearby.SearchAsync(location, radius, unit, days);
+        }
+        catch (GeocodingException)
+        {
+            await FollowupAsync("Location search is unavailable right now. Try again later.", ephemeral: true);
+            return;
+        }
+        catch (EventProviderException)
+        {
+            await FollowupAsync("PokéData isn't responding right now. Try again later.", ephemeral: true);
+            return;
+        }
+
+        if (result is null)
+        {
+            await FollowupAsync($"Couldn't find \"{Format.Sanitize(location)}\". Try a city and state, or a postcode.", ephemeral: true);
+            return;
+        }
+
+        await FollowupAsync(embed: EventEmbedBuilder.BuildNearbyList(result, radius, unit, days, ListLimit), ephemeral: true);
     }
 
     private static Embed BuildList(string title, IReadOnlyList<GuildEventListing> events)

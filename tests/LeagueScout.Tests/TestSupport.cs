@@ -36,11 +36,12 @@ public sealed class FakeEventProvider : IEventProvider
 
     public List<PokemonEvent> Events { get; set; } = [];
     public Exception? Failure { get; set; }
-    public int Calls { get; private set; }
+    public int Calls => Criteria.Count;
+    public List<EventSearchCriteria> Criteria { get; } = [];
 
     public Task<IReadOnlyCollection<PokemonEvent>> GetEventsAsync(EventSearchCriteria criteria, CancellationToken cancellationToken = default)
     {
-        Calls++;
+        Criteria.Add(criteria);
         if (Failure is not null) throw Failure;
 
         // Return fresh copies, as a real provider would.

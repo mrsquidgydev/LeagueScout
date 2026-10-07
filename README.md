@@ -24,6 +24,7 @@ PokéData events.php ──► EventSyncWorker ──► upsert (SQLite) ──�
 |---|---|---|
 | `/events upcoming` | everyone | Next upcoming events posted in this server |
 | `/events mine` | everyone | Upcoming events you marked Interested or Going |
+| `/events near` | everyone | Live PokéData search for Challenges and Cups near a place you type, e.g. `location:Austin, TX radius:50` |
 | `/eventbot status` | everyone | This server's configuration |
 | `/eventbot configure` | Manage Server | Set channel, location, event types, look-ahead, enable/disable |
 | `/donate` | everyone | Link to the Ko-fi page to support hosting costs |
@@ -82,6 +83,11 @@ The first sync posts every matching upcoming event in the look-ahead window. Kee
 PokéData HTTP settings (timeouts, retries, user agent) live in `src/LeagueScout.Bot/appsettings.json`
 under `PokeData`. Override with env vars such as `PokeData__MaxRetryAttempts=1`.
 Guild filtering lives in the database, not in environment variables.
+
+`/events near` geocodes the typed place with [Nominatim](https://nominatim.org/) (OpenStreetMap), configured
+under `Nominatim`. The public instance allows 1 request per second and requires an identifying User-Agent, so
+the bot spaces requests, caches places for 7 days and results for 15 minutes, and limits each user to one
+search every 30 seconds. Typed locations are not stored or logged.
 
 For JSON logs set `Logging__Console__FormatterName=json`.
 

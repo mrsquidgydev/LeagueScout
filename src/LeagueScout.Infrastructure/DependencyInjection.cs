@@ -5,6 +5,7 @@ using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 using LeagueScout.Application.Persistence;
 using LeagueScout.Application.Providers;
+using LeagueScout.Infrastructure.Geocoding;
 using LeagueScout.Infrastructure.PokeData;
 using LeagueScout.Infrastructure.Persistence;
 using LeagueScout.Infrastructure.TimeZones;
@@ -47,6 +48,31 @@ public static class DependencyInjection
             });
 
         services.AddScoped<IEventProvider, PokeDataEventProvider>();
+
+        services.Configure<NominatimOptions>(configuration.GetSection(NominatimOptions.SectionName));
+        var nominatim = configuration.GetSection(NominatimOptions.SectionName).Get<NominatimOptions>() ?? new NominatimOptions();
+
+        services
+            .AddHttpClient(NominatimGeocoder.HttpClientName, (sp, client) =>
+            {
+                var options = sp.GetRequiredService<IOptions<NominatimOptions>>().Value;
+                client.BaseAddress = options.BaseAddress;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
+                client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            })
+            .AddStandardResilienceHandler(options =>
+            {
+                options.Retry.MaxRetryAttempts = nominatim.MaxRetryAttempts;
+                options.Retry.Delay = TimeSpan.FromSeconds(2);
+                options.AttemptTimeout.Timeout = nominatim.AttemptTimeout;
+                options.TotalRequestTimeout.Timeout = nominatim.TotalTimeout;
+                options.CircuitBreaker.SamplingDuration = nominatim.AttemptTimeout * 2;
+            });
+
+        // Singleton: the geocoder spaces requests across all users.
+        services.AddSingleton<IGeocoder, NominatimGeocoder>();
 
         return services;
     }

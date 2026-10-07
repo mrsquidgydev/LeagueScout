@@ -30,6 +30,7 @@ builder.Services.AddSingleton(sp => new InteractionService(
     new InteractionServiceConfig { LogLevel = LogSeverity.Info, UseCompiledLambda = true, DefaultRunMode = RunMode.Sync }));
 builder.Services.AddSingleton<DiscordReadySignal>();
 builder.Services.AddSingleton<SyncTrigger>();
+builder.Services.AddSingleton<UserCooldown>();
 builder.Services.AddSingleton<IEventMessagePublisher, DiscordEventPublisher>();
 
 builder.Services.AddHostedService<DiscordBotService>();

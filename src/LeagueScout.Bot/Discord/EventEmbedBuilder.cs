@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text;
 using Discord;
+using LeagueScout.Application.Queries;
 using LeagueScout.Application.Rsvps;
 using LeagueScout.Domain;
 
@@ -72,6 +74,51 @@ public static class EventEmbedBuilder
             .WithButton("Interested", RsvpButtonId.Create(ev.Id, RsvpStatus.Interested), ButtonStyle.Secondary, new Emoji("👀"), disabled: disabled)
             .WithButton("Going", RsvpButtonId.Create(ev.Id, RsvpStatus.Going), ButtonStyle.Success, new Emoji("✅"), disabled: disabled)
             .WithButton("Not Going", RsvpButtonId.Create(ev.Id, RsvpStatus.NotGoing), ButtonStyle.Danger, new Emoji("❌"), disabled: disabled)
+            .Build();
+    }
+
+    /// <summary>Renders a live nearby search. Always shows the resolved place so users can spot a wrong match.</summary>
+    public static Embed BuildNearbyList(NearbyEventSearchResult result, double radius, DistanceUnit unit, int lookAheadDays, int limit)
+    {
+        var unitLabel = unit == DistanceUnit.Kilometers ? "km" : "mi";
+        var scope = string.Create(CultureInfo.InvariantCulture, $"within {radius:0.#} {unitLabel}, next {lookAheadDays} days");
+
+        var description = new StringBuilder();
+        description.AppendLine($"📍 {Escape(result.Location.DisplayName)}");
+        description.AppendLine($"*League Challenges and Cups {scope}*");
+        description.AppendLine();
+
+        if (result.Events.Count == 0)
+        {
+            description.AppendLine("No events found. Try a larger radius or more days.");
+        }
+
+        var shown = 0;
+        foreach (var (ev, distance) in result.Events.Take(limit))
+        {
+            var name = Escape(ShortName(ev));
+            var link = ev.RegistrationUrl is null ? $"**{name}**" : $"[{name}]({ev.RegistrationUrl})";
+            var place = ev.City is null ? "" : $" · {Escape(ev.City)}";
+            var away = distance is null ? "" : string.Create(CultureInfo.InvariantCulture, $" · {distance:0} {unitLabel}");
+            var line = $"{Timestamp(ev.StartDateTime, 'f')} — {link}{place}{away}";
+
+            // Leave room for the "more" line below.
+            if (description.Length + line.Length > EmbedBuilder.MaxDescriptionLength - 100) break;
+            description.AppendLine(line);
+            shown++;
+        }
+
+        if (shown < result.Events.Count)
+        {
+            description.AppendLine();
+            description.AppendLine($"…and {result.Events.Count - shown} more. Narrow the radius or days to see them.");
+        }
+
+        return new EmbedBuilder()
+            .WithTitle("Events near you")
+            .WithDescription(description.ToString())
+            .WithColor(OtherColor)
+            .WithFooter($"{SourceDisclaimer} Location search © OpenStreetMap contributors.")
             .Build();
     }
 

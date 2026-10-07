@@ -11,9 +11,11 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddSingleton(TimeProvider.System);
+        services.AddMemoryCache();
         services.AddScoped<EventSyncService>();
         services.AddScoped<RsvpService>();
         services.AddScoped<EventQueryService>();
+        services.AddScoped<NearbyEventSearchService>();
         services.AddScoped<GuildConfigurationService>();
         return services;
     }
