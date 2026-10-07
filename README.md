@@ -26,8 +26,19 @@ PokéData events.php ──► EventSyncWorker ──► upsert (SQLite) ──�
 | `/events mine` | everyone | Upcoming events you marked Interested or Going |
 | `/eventbot status` | everyone | This server's configuration |
 | `/eventbot configure` | Manage Server | Set channel, location, event types, look-ahead, enable/disable |
+| `/donate` | everyone | Link to the Ko-fi page to support hosting costs |
 
 All responses are ephemeral.
+
+## Support
+
+LeagueScout is free to use. If it helps your community, consider supporting hosting and running costs:
+
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20LeagueScout-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mrsquidgy)
+
+<https://ko-fi.com/mrsquidgy>
+
+Run `/donate` in Discord to get the link from the bot.
 
 ## Discord setup
 
