@@ -18,6 +18,8 @@ an anonymous GET that the public page itself performs.
 | Intended for public consumption? | **Not explicitly.** It is the site's own backend endpoint (CORS `Access-Control-Allow-Origin: https://pokedata.ovh`, page sends `X-Requested-With: XMLHttpRequest`). It is unauthenticated and publicly reachable, but undocumented and may change without notice. Poll politely (hours, not minutes). |
 | Stable unique IDs? | **Yes, two.** `id` (PokéData GUID) and `pokemon_url` (official Play! Pokémon tournament ID, e.g. `26-10-014168`). Both unique within responses and identical across different query types (72/72 overlapping events matched between a state query and a radius query). |
 | CSV export | **Client-side only.** The "Export to CSV" button calls the same `events.php` search endpoint and builds the CSV in the browser. There is no server CSV endpoint. |
+| Conditional requests | **Not supported.** Re-checked 2026-10-07: responses carry no `ETag`, `Last-Modified`, `Cache-Control` or `Retry-After` header (`Transfer-Encoding: chunked`, `cf-cache-status: DYNAMIC`). The bot sends unconditional requests. |
+| Country-wide query | **Works.** `country=US` with empty `stateCodes` and no radius returned every US event: 2,173 TCG Challenges/Cups for 2026-10-06..2026-11-06, 838 KB, 1.7 s (2026-10-07). |
 
 Integration choice: **option 2 — stable endpoint legitimately used by Events v2** (`events.php` search).
 
@@ -118,5 +120,8 @@ A cancelled event can therefore only be detected by **disappearing** from result
   It is stable by definition, unique, and survives a PokéData re-import, unlike a database GUID. Records without it are skipped and logged.
 - **Times:** parse `when` as local time, resolve the IANA time zone from `lat`/`lng`, store UTC.
 - **Filtering:** both `country + stateCodes` and `lat/lng/radius` are verified. The bot supports either per guild; radius wins when set.
-- **Cancellation:** an upcoming event that vanishes from a successful, non-empty result for a guild is marked `Removed` ("may be cancelled"). It returns to `Active` if it reappears.
-- **Polling:** default every 6 hours; one request per enabled guild per sync.
+- **Cancellation:** an upcoming event missing from 2 successful, non-empty refreshes in a row of a dataset that
+  covers it is marked `Removed` ("may be cancelled"). Failed refreshes never count. It returns to `Active` if it reappears.
+- **Polling:** guilds do not poll. Each distinct dataset (one per country for region filters, one per rounded
+  centre and radius for radius filters) is requested at most every 6 hours plus jitter, with persisted backoff after
+  failures. Guilds read the shared cache. See the README section "How PokéData is polled".
