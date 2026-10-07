@@ -68,6 +68,14 @@ coverage*.info
 .claude/settings.local.json
 
 # ---------------------------------------------------------------
+# graphify (graph.json, GRAPH_REPORT.md, graph.html stay tracked)
+# ---------------------------------------------------------------
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/.graphify_python
+
+# ---------------------------------------------------------------
 # OS files
 # ---------------------------------------------------------------
 .DS_Store
