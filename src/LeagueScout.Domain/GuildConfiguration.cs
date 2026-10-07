@@ -30,6 +30,9 @@ public class GuildConfiguration
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    /// <summary>Last time cached events were matched and posted for this guild.</summary>
+    public DateTime? LastSyncedAt { get; set; }
+
     public bool HasRadiusFilter => Latitude is not null && Longitude is not null && Radius is > 0;
 
     public bool HasRegionFilter => !string.IsNullOrWhiteSpace(Country);

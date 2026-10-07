@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<GuildConfiguration> GuildConfigurations => Set<GuildConfiguration>();
     public DbSet<GuildEventMessage> GuildEventMessages => Set<GuildEventMessage>();
     public DbSet<EventRsvp> EventRsvps => Set<EventRsvp>();
+    public DbSet<DatasetSyncState> DatasetSyncStates => Set<DatasetSyncState>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -30,6 +31,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.Source, x.SourceEventId }).IsUnique();
             e.HasIndex(x => x.StartDateTime);
+            // Guild matching and missing-event detection filter by country and upcoming start time.
+            e.HasIndex(x => new { x.Country, x.StartDateTime });
 
             e.Property(x => x.Source).HasMaxLength(32);
             e.Property(x => x.SourceEventId).HasMaxLength(128);
@@ -75,6 +78,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.GuildId, x.DiscordUserId });
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
             e.HasOne(x => x.Event).WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DatasetSyncState>(e =>
+        {
+            e.ToTable("DatasetSyncStates");
+            e.HasKey(x => new { x.Source, x.DatasetKey });
+            e.Property(x => x.Source).HasMaxLength(32);
+            e.Property(x => x.DatasetKey).HasMaxLength(128);
+            e.Property(x => x.LastFailureReason).HasMaxLength(DatasetSyncState.MaxReasonLength);
         });
     }
 

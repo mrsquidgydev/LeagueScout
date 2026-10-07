@@ -13,6 +13,7 @@ public interface IApplicationDbContext
     DbSet<GuildConfiguration> GuildConfigurations { get; }
     DbSet<GuildEventMessage> GuildEventMessages { get; }
     DbSet<EventRsvp> EventRsvps { get; }
+    DbSet<DatasetSyncState> DatasetSyncStates { get; }
 
     ChangeTracker ChangeTracker { get; }
 

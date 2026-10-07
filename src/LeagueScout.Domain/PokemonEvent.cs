@@ -41,6 +41,15 @@ public class PokemonEvent
     /// <summary>Last time a material change was detected.</summary>
     public DateTime LastModifiedAt { get; set; }
 
+    /// <summary>
+    /// Successful source refreshes in a row that should have listed this upcoming event but did not.
+    /// Failed refreshes never count. Reset when the event reappears.
+    /// </summary>
+    public int MissingCount { get; set; }
+
+    /// <summary>First successful refresh in the current run of <see cref="MissingCount"/>.</summary>
+    public DateTime? MissingSince { get; set; }
+
     public bool HasStarted(DateTime utcNow) => StartDateTime <= utcNow;
 
     /// <summary>
@@ -72,13 +81,26 @@ public class PokemonEvent
         return changes;
     }
 
-    /// <summary>Marks the event as seen in the source. Reactivates a removed event.</summary>
+    /// <summary>Marks the event as seen in the source. Clears missing state and reactivates a removed event.</summary>
     public EventChangeSet MarkSeen(DateTime utcNow)
     {
         var changes = new EventChangeSet();
         LastSeenAt = utcNow;
+        MissingCount = 0;
+        MissingSince = null;
         Set(changes, nameof(Status), Status, EventStatus.Active, v => Status = v, material: true);
         return changes;
+    }
+
+    /// <summary>
+    /// Records one successful source refresh that did not list the event.
+    /// Marks it removed once <paramref name="threshold"/> consecutive misses are reached.
+    /// </summary>
+    public EventChangeSet RecordMissing(DateTime utcNow, int threshold)
+    {
+        MissingCount++;
+        MissingSince ??= utcNow;
+        return MissingCount >= threshold ? MarkRemoved() : new EventChangeSet();
     }
 
     /// <summary>Marks the event as no longer listed by the source.</summary>
