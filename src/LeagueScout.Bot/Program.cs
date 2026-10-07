@@ -25,7 +25,9 @@ builder.Services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
 }));
 builder.Services.AddSingleton(sp => new InteractionService(
     sp.GetRequiredService<DiscordSocketClient>(),
-    new InteractionServiceConfig { LogLevel = LogSeverity.Info, UseCompiledLambda = true }));
+    // Sync so ExecuteCommandAsync completes inside the per-interaction DI scope;
+    // DiscordBotService offloads each interaction to keep the gateway free.
+    new InteractionServiceConfig { LogLevel = LogSeverity.Info, UseCompiledLambda = true, DefaultRunMode = RunMode.Sync }));
 builder.Services.AddSingleton<DiscordReadySignal>();
 builder.Services.AddSingleton<SyncTrigger>();
 builder.Services.AddSingleton<IEventMessagePublisher, DiscordEventPublisher>();

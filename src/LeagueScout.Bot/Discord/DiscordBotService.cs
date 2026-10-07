@@ -62,9 +62,17 @@ public sealed class DiscordBotService(
         readySignal.SetReady();
     }
 
-    private async Task OnInteractionAsync(SocketInteraction interaction)
+    private Task OnInteractionAsync(SocketInteraction interaction)
     {
-        // Each interaction gets its own DI scope (and DbContext).
+        // Run off the gateway task so slow handlers don't stall other events.
+        _ = Task.Run(() => ExecuteInteractionAsync(interaction));
+        return Task.CompletedTask;
+    }
+
+    private async Task ExecuteInteractionAsync(SocketInteraction interaction)
+    {
+        // Each interaction gets its own DI scope (and DbContext). Commands run with
+        // RunMode.Sync, so the scope stays alive until the command finishes.
         await using var scope = services.CreateAsyncScope();
         try
         {
